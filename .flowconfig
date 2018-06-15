@@ -1,0 +1,10 @@
+[options]
+module.name_mapper='^\(.*\)$' -> '<PROJECT_ROOT>/\1'
+esproposal.class_static_fields=enable
+esproposal.class_instance_fields=enable
+suppress_comment= \\(.\\|\n\\)*\\$FlowIssue
+
+[ignore]
+
+[libs]
+flow-typed/npm/

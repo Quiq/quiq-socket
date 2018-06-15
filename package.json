@@ -1,0 +1,87 @@
+{
+  "name": "quiq-socket",
+  "version": "0.0.1",
+  "description": "WebSocket API wrapper with automatic retry handling and heartbeat",
+  "main": "dist/index.js",
+  "module": "dist/index.es.js",
+  "jsnext:main": "dist/index.es.js",
+  "scripts": {
+    "build": "rollup -c",
+    "start": "rollup -c -w",
+    "flow": "flow",
+    "jest": "jest --watch --colors",
+    "lint": "node ./node_modules/.bin/eslint src/",
+    "prepublish": "npm run build",
+    "test": "flow && ./node_modules/.bin/jest && node ./node_modules/eslint/bin/eslint.js src/ --quiet",
+    "precommit": "lint-staged"
+  },
+  "lint-staged": {
+    "src/**/*.js": [
+      "./node_modules/.bin/prettier --write",
+      "git add"
+    ]
+  },
+  "pre-commit": "lint-staged",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Quiq/quiq-sockets.git"
+  },
+  "keywords": [
+    "websockets",
+    "retry"
+  ],
+  "author": "Quiq",
+  "license": "MIT",
+  "jest": {
+    "moduleDirectories": [
+      "src",
+      "node_modules"
+    ],
+    "testEnvironmentOptions": {
+      "resources": "usable"
+    },
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
+  },
+  "bugs": {
+    "url": "https://github.com/Quiq/quiq-sockets/issues"
+  },
+  "homepage": "https://github.com/Quiq/quiq-sockets#readme",
+  "dependencies": {
+    "extendable-error-class": "0.1.1",
+    "lodash": "4.17.10",
+    "qs": "6.5.2"
+  },
+  "devDependencies": {
+    "ajv": "^6.4.0",
+    "babel-core": "^6.26.0",
+    "babel-eslint": "^8.0.3",
+    "babel-jest": "^22.4.0",
+    "babel-plugin-transform-flow-strip-types": "^6.22.0",
+    "babel-plugin-transform-runtime": "^6.23.0",
+    "babel-preset-env": "^1.6.1",
+    "babel-preset-stage-0": "^6.24.1",
+    "eslint": "^4.13.1",
+    "eslint-config-airbnb": "^16.1.0",
+    "eslint-plugin-flowtype": "^2.40.1",
+    "eslint-plugin-import": "^2.8.0",
+    "eslint-plugin-jsx-a11y": "^6.0.3",
+    "eslint-plugin-react": "^7.7.0",
+    "fetch-mock": "^6.3.0",
+    "flow-bin": "^0.69.0",
+    "husky": "^0.14.3",
+    "jest": "^22.4.0",
+    "lint-staged": "^6.0.0",
+    "lodash": "^4.17.10",
+    "prettier": "^1.11.0",
+    "rollup": "^0.57.1",
+    "rollup-plugin-babel": "^3.0.3",
+    "rollup-plugin-commonjs": "^9.1.0",
+    "rollup-plugin-flow": "^1.1.1",
+    "rollup-plugin-node-resolve": "^3.3.0"
+  },
+  "files": [
+    "dist"
+  ]
+}
