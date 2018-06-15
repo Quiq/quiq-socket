@@ -1,8 +1,7 @@
 # Quiq-Socket
 
-Fetch wrapper with built in retry
-
----
+WebSocket wrapper with retry and heartbeat.
+-------------------------------------------
 
 [![styled with prettier](https://img.shields.io/badge/styled_with-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
 [![Build Status](https://travis-ci.org/Quiq/quiq-socket.svg?branch=master)](https://travis-ci.org/Quiq/quiq-socket)
@@ -35,7 +34,7 @@ new QuiqSocket()
 
 ---
 
-Many methods and options are available, and document inline in `src/quiqSocket.js`. 
+Many methods and options are available, and are documented inline in `src/quiqSocket.js`. 
 
 ## License
 
