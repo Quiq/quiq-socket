@@ -1,24 +1,5 @@
 // @flow
 
-/**
- * @callback QuiqSocket~connectionLossCallback
- * @param {number} code - Numeric reason code.
- * @param {string} reason - Human-readable reason for websocket close.
- */
-
-/**
- * @callback QuiqSocket~messageCallback
- * @param {AtmosphereMessage} message - Received message
- */
-
-/**
- * @callback QuiqSocket~connectionEstablishCallback
- */
-
-/**
- * @callback QuiqSocket~fatalErrorCallback
- */
-
 import StatusCodes from './StatusCodes';
 import clamp from 'lodash/clamp';
 import {formatQueryParams} from './Utils';
@@ -187,6 +168,7 @@ class QuiqSocket {
   /** ******************************
    * Public Methods
    ****************************** */
+  
   /**
    * Adds an event listener to the specified event.
    * This method is idempotent.
@@ -204,7 +186,7 @@ class QuiqSocket {
   removeEventListener = (event: EventName, handler: Function): QuiqSocket => {
     const idx = this._handlers[event].indexOf(handler);
     if (idx > -1) {
-      this._handlers.splice(idx, 1);
+      this._handlers[event].splice(idx, 1);
     }
     return this;
   };
