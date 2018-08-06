@@ -51,6 +51,9 @@ export type Options = {
   // Upon unexpected disconnect, try to reconnect for this long before admitting there's an error.
   gracePeriod: number,
 
+  // When retrying attempts, a randomized entropy in MS is added to avoid multiple connections simultaneously retring
+  maxEntropy: number,
+
   // Defines a hook function, called before every connection attempt
   // that can provide the protocol string to be used for the WebSocket connection.
   // This can be used to pass an auth token securely to your backend.
@@ -93,7 +96,7 @@ class QuiqSocket {
     maxRetriesOnConnectionLoss: 100,
     backoffFunction: (attempt: number) => {
       const exponentialBackoff = clamp((attempt ** 2 / 2) * 1000, 0, 30000);
-      const absoluteEntropy = Math.round(Math.random() * 10000);
+      const absoluteEntropy = Math.round(Math.random() * this._options.maxEntropy);
       return exponentialBackoff + absoluteEntropy;
     },
     maxConnectionCount: 100,
@@ -101,6 +104,7 @@ class QuiqSocket {
     heartbeatFrequency: 50 * 1000,
     heartbeatTimeout: 20 * 1000,
     gracePeriod: 20 * 1000,
+    maxEntropy: 10 * 1000,
   };
 
   // Internal WebSocket instance
