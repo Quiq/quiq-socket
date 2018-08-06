@@ -51,7 +51,7 @@ export type Options = {
   // Upon unexpected disconnect, try to reconnect for this long before admitting there's an error.
   gracePeriod: number,
 
-  // When retrying attempts, a randomized entropy in MS is added to avoid multiple connections simultaneously retring
+  // When retrying attempts, a randomized entropy in MS is added to avoid multiple connections simultaneously retrying
   maxEntropy: number,
 
   // Defines a hook function, called before every connection attempt
