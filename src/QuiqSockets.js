@@ -5,27 +5,27 @@ import clamp from 'lodash/clamp';
 import {formatQueryParams} from './Utils';
 
 type Timeout = TimeoutID;
-type Interval =  IntervalID;
+type Interval = IntervalID;
 
 type Timers = {
-  connectionTimeout: ?Timeout,  // Timeout for connection/handshake attempt
-  retryTimeout: ?Timeout,       // Timeout for backoff on retry attempts
+  connectionTimeout: ?Timeout, // Timeout for connection/handshake attempt
+  retryTimeout: ?Timeout, // Timeout for backoff on retry attempts
   heartbeat: {
-    interval: ?Interval,        // Interval for sending of heartbeat
-    timeout: ?Timeout,          // Timeout for receiving a pong back from the server
+    interval: ?Interval, // Interval for sending of heartbeat
+    timeout: ?Timeout, // Timeout for receiving a pong back from the server
   },
   gracePeriod: ?Timeout,
 };
 
 interface Logging {
-  +info: (...args: Array<any>) => void,
-  +warn: (...args: Array<any>) => void,
-  +error: (...args: Array<any>) => void,
+  +info: (...args: Array<any>) => void;
+  +warn: (...args: Array<any>) => void;
+  +error: (...args: Array<any>) => void;
 }
 
 export type FatalErrorReason = 'MAX_CONNECTION_COUNT_EXCEEDED' | 'UNKNOWN';
 
-export type EventName = "connectionLoss" | "connectionEstablish" | "message" | "fatalError";
+export type EventName = 'connectionLoss' | 'connectionEstablish' | 'message' | 'fatalError';
 
 export type FatalErrorCallbackData = {reason: FatalErrorReason};
 
@@ -51,12 +51,12 @@ export type Options = {
   // Upon unexpected disconnect, try to reconnect for this long before admitting there's an error.
   gracePeriod: number,
 
-  // Defines a hook function, called before every connection attempt 
+  // Defines a hook function, called before every connection attempt
   // that can provide the protocol string to be used for the WebSocket connection.
   // This can be used to pass an auth token securely to your backend.
   protocolHook?: () => ?string,
 
-  // Defines a hook function, called before every connection attempt 
+  // Defines a hook function, called before every connection attempt
   // that can provide the query arguments to be appended to the WebSocket URL
   queryArgHook?: () => ?{[string]: string},
 
@@ -91,12 +91,16 @@ class QuiqSocket {
   // Websocket options
   _options: Options = {
     maxRetriesOnConnectionLoss: 100,
-    backoffFunction: (attempt: number) => clamp((attempt ** 2 - 1) / 2 * 1000, 0, 30000),
+    backoffFunction: (attempt: number) => {
+      const exponentialBackoff = clamp((attempt ** 2 / 2) * 1000, 0, 30000);
+      const absoluteEntropy = Math.round(Math.random() * 10000);
+      return exponentialBackoff + absoluteEntropy;
+    },
     maxConnectionCount: 100,
     connectionAttemptTimeout: 10 * 1000,
     heartbeatFrequency: 50 * 1000,
     heartbeatTimeout: 20 * 1000,
-    gracePeriod: 10 * 1000,
+    gracePeriod: 20 * 1000,
   };
 
   // Internal WebSocket instance
@@ -124,10 +128,10 @@ class QuiqSocket {
   _waitingForOnlineToReconnect: boolean = false;
   _inRetryCycle: boolean = false;
   _connecting: boolean = false;
-  
+
   // Logger
   _log: Logging = console;
-  
+
   constructor() {
     // NOTE: We use 'waitingForOnlineToReconnect' as a flag for whether to attempt reconnecting after an 'online' event.
     // In other words, QuiqSocket must have recorded an 'offline' event prior to the 'online' event if it's going to reconnect.
@@ -168,7 +172,7 @@ class QuiqSocket {
   /** ******************************
    * Public Methods
    ****************************** */
-  
+
   /**
    * Adds an event listener to the specified event.
    * This method is idempotent.
@@ -200,7 +204,7 @@ class QuiqSocket {
     this._url = url;
     return this;
   };
-  
+
   withLogger = (logger: Logging): QuiqSocket => {
     this._log = logger;
     return this;
@@ -214,10 +218,12 @@ class QuiqSocket {
   withOptions = (options: Options): QuiqSocket => {
     // Option validation
     if (options.heartbeatTimeout >= options.heartbeatFrequency) {
-      this._log.error('Heartbeat timeout must be less than heartbeat interval. Not updating options');
+      this._log.error(
+        'Heartbeat timeout must be less than heartbeat interval. Not updating options',
+      );
       return this;
     }
-    
+
     this._options = {...this._options, ...options};
     return this;
   };
@@ -232,9 +238,9 @@ class QuiqSocket {
     if (this._connecting) {
       return this;
     }
-    
+
     this._connecting = true;
-    
+
     // Check burn status
     if (this._options.connectionGuardHook && !this._options.connectionGuardHook()) {
       this._log.error('Connection guard hook returned falsy, aborting connection attempt.');
@@ -269,14 +275,14 @@ class QuiqSocket {
       if (typeof hookResult === 'string') {
         protocol = hookResult;
       } else {
-        this._log.warn("The protocol hook did not return a string value, discarding.");
+        this._log.warn('The protocol hook did not return a string value, discarding.');
       }
     }
-    
+
     if (this._options.queryArgHook) {
       queryArgs = this._options.queryArgHook();
     }
-    
+
     // Connect socket.
     const parsedUrl = formatQueryParams(this._url, queryArgs);
 
@@ -320,7 +326,7 @@ class QuiqSocket {
     }
 
     this._reset();
-    
+
     this._connecting = this._inRetryCycle = false;
 
     return this;
@@ -342,7 +348,9 @@ class QuiqSocket {
     }
 
     this._log.info(
-      `Initiating retry attempt ${this._retries + 1} of ${this._options.maxRetriesOnConnectionLoss}`,
+      `Initiating retry attempt ${this._retries + 1} of ${
+        this._options.maxRetriesOnConnectionLoss
+      }`,
     );
 
     this._inRetryCycle = true;
@@ -473,7 +481,7 @@ class QuiqSocket {
     this._startHeartbeat();
 
     // Fire event handler
-    this._fireHandlers(Events.CONNECTION_ESTABLISH)
+    this._fireHandlers(Events.CONNECTION_ESTABLISH);
   };
 
   /**
@@ -484,7 +492,7 @@ class QuiqSocket {
   _handleClose = (e: CloseEvent) => {
     const dirtyOrClean = e.wasClean ? 'CLEANLY' : 'DIRTILY';
     this._log.info(`Socket ${dirtyOrClean} closed unexpectedly with code ${e.code}: ${e.reason}.`);
-    
+
     this._connecting = false; // In case it closed during connection attempt
 
     // TODO: handle code 1015 (TCP 1.1 not supported)
@@ -521,7 +529,7 @@ class QuiqSocket {
    */
   _handleFatalError = (reason: FatalErrorReason) => {
     this._log.error('QuiqSocket encountered a fatal error.');
-    
+
     this._fireHandlers(Events.FATAL_ERROR, {reason});
   };
 
@@ -575,7 +583,7 @@ class QuiqSocket {
       this.connect();
     }
   };
-  
+
   _fireHandlers = (event: EventName, data: ?Object) => {
     this._handlers[event].forEach(handler => {
       if (data) {
