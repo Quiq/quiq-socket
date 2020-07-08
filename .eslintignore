@@ -1,0 +1,8 @@
+# don't lint top level js config files b/c the parser complains.  
+# should lint without type-aware rules, but I can't figure out how
+#https://github.com/typescript-eslint/typescript-eslint/blob/master/docs/getting-started/linting/TYPED_LINTING.md
+*.js
+# don't ever lint node_modules
+node_modules
+# don't lint build output (make sure it's set to your correct build folder name)
+dist

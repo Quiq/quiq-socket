@@ -1,6 +1,8 @@
-// @flow
 
-const StatusCodes: {[string]: number} = {
+
+const StatusCodes: {
+  [key: string]: number;
+} = {
   closeNormal: 1000,
   closeGoingAway: 1001,
   closeProtocolError: 1002,
@@ -14,7 +16,7 @@ const StatusCodes: {[string]: number} = {
   internalError: 1011,
   serviceRestart: 1012,
   tryAgainLater: 1013,
-  tlsHandshake: 1015,
+  tlsHandshake: 1015
 };
 
 export default StatusCodes;

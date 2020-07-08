@@ -1,11 +1,12 @@
 import babel from 'rollup-plugin-babel';
-import flow from 'rollup-plugin-flow';
 import resolve from 'rollup-plugin-node-resolve';
 import commonjs from 'rollup-plugin-commonjs';
 import pkg from './package.json';
 
+const extensions = ['.js', '.jsx', '.ts', '.tsx'];
+
 export default {
-  input: 'src/index.js',
+  input: 'src/index.ts',
   output: [
     {
       file: pkg.main,
@@ -19,11 +20,12 @@ export default {
     },
   ],
   plugins: [
-    flow({all: true, pretty: true}),
     babel({
+      extensions,
       exclude: 'node_modules/**',
     }),
     resolve({
+      extensions,
       browser: true,
     }),
     commonjs(),

@@ -1,26 +1,24 @@
-// @flow
-
 import StatusCodes from './StatusCodes';
 import clamp from 'lodash/clamp';
 import {formatQueryParams} from './Utils';
 
-type Timeout = TimeoutID;
-type Interval = IntervalID;
+type Timeout = ReturnType<typeof setTimeout>;
+type Interval = ReturnType<typeof setInterval>;
 
 type Timers = {
-  connectionTimeout: ?Timeout, // Timeout for connection/handshake attempt
-  retryTimeout: ?Timeout, // Timeout for backoff on retry attempts
+  connectionTimeout: Timeout | null | undefined; // Timeout for connection/handshake attempt
+  retryTimeout: Timeout | null | undefined; // Timeout for backoff on retry attempts
   heartbeat: {
-    interval: ?Interval, // Interval for sending of heartbeat
-    timeout: ?Timeout, // Timeout for receiving a pong back from the server
-  },
-  gracePeriod: ?Timeout,
+    interval: Interval | null | undefined; // Interval for sending of heartbeat
+    timeout: Timeout | null | undefined; // Timeout for receiving a pong back from the server
+  };
+  gracePeriod: Timeout | null | undefined;
 };
 
 interface Logging {
-  +info: (...args: Array<any>) => void;
-  +warn: (...args: Array<any>) => void;
-  +error: (...args: Array<any>) => void;
+  info: (...args: Array<any>) => void;
+  warn: (...args: Array<any>) => void;
+  error: (...args: Array<any>) => void;
 }
 
 export type FatalErrorReason = 'MAX_CONNECTION_COUNT_EXCEEDED' | 'UNKNOWN';
@@ -31,65 +29,71 @@ export type FatalErrorCallbackData = {reason: FatalErrorReason};
 
 export type Options = {
   // Number of times to attempt reconnecting on a single connection
-  maxRetriesOnConnectionLoss: number,
+  maxRetriesOnConnectionLoss: number;
 
   // Function of the form attempt => delay used for delaying retry attempts
-  backoffFunction: (attempt: number) => number,
+  backoffFunction: (attempt: number) => number;
 
   // the maximum number of times connect() will be called, either externally or in doing retries, for the entire session.
-  maxConnectionCount: number,
+  maxConnectionCount: number;
 
   // The timeout for WebSocket.onopen to be called for a connection attempt.
-  connectionAttemptTimeout: number,
+  connectionAttemptTimeout: number;
 
   // Frequency to send ping across websocket
-  heartbeatFrequency: number,
+  heartbeatFrequency: number;
 
   // Initiate reconnect if pong is not received in this time
-  heartbeatTimeout: number,
+  heartbeatTimeout: number;
 
   // Upon unexpected disconnect, try to reconnect for this long before admitting there's an error.
-  gracePeriod: number,
+  gracePeriod: number;
 
   // When retrying attempts, a randomized entropy in MS is added to avoid multiple connections simultaneously retrying
-  maxEntropy: number,
+  maxEntropy: number;
 
   // Defines a hook function, called before every connection attempt
   // that can provide the protocol string to be used for the WebSocket connection.
   // This can be used to pass an auth token securely to your backend.
-  protocolHook?: () => ?string,
+  protocolHook?: () => string | null | undefined;
 
   // Defines a hook function, called before every connection attempt
   // that can provide the query arguments to be appended to the WebSocket URL
-  queryArgHook?: () => ?{[string]: string},
+  queryArgHook?: () =>
+    | {
+        [key: string]: string;
+      }
+    | null
+    | undefined;
 
   // Defines a hook function, called before every connection attempt,
   // that can block the connection attempt by returning false.
-  connectionGuardHook?: () => boolean,
+  connectionGuardHook?: () => boolean;
 };
 
-export const FatalErrors: {[string]: FatalErrorReason} = {
-  MAX_CONNECTION_COUNT_EXCEEDED: 'MAX_CONNECTION_COUNT_EXCEEDED',
-  UNKNOWN: 'UNKNOWN',
-};
+export enum FatalErrors {
+  MAX_CONNECTION_COUNT_EXCEEDED = 'MAX_CONNECTION_COUNT_EXCEEDED',
+  UNKNOWN = 'UNKNOWN',
+}
 
-export const Events: {[string]: EventName} = {
-  CONNECTION_LOSS: 'connectionLoss',
-  CONNECTION_ESTABLISH: 'connectionEstablish',
-  MESSAGE: 'message',
-  FATAL_ERROR: 'fatalError',
-};
+export enum Events {
+  CONNECTION_LOSS = 'connectionLoss',
+  CONNECTION_ESTABLISH = 'connectionEstablish',
+  MESSAGE = 'message',
+  FATAL_ERROR = 'fatalError',
+}
 
 class QuiqSocket {
   // Socket endpoint
-  _url: ?string;
+  _url: string | null | undefined;
 
   // External event callbacks
-  _handlers = Object.keys(Events).reduce((handlers, key) => ({...handlers, [Events[key]]: []}), {});
-  _connectionLossHandlers: Array<?(reasonCode: number, message: string) => any> = [];
-  _connectionEstablishHandlers: Array<?() => any> = [];
-  _messageHandlers: Array<?(data: Object) => any> = [];
-  _fatalErrorHandlers: Array<?(data: FatalErrorCallbackData) => any> = [];
+  _handlers: Record<EventName, any[]> = {
+    [Events.CONNECTION_ESTABLISH]: [],
+    [Events.CONNECTION_LOSS]: [],
+    [Events.MESSAGE]: [],
+    [Events.FATAL_ERROR]: [],
+  };
 
   // Websocket options
   _options: Options = {
@@ -108,11 +112,11 @@ class QuiqSocket {
   };
 
   // Internal WebSocket instance
-  _socket: ?WebSocket;
+  _socket: WebSocket | null | undefined;
 
   // Retry and connection counting
-  _retries: number = 0;
-  _connectionCount: number = 0;
+  _retries = 0;
+  _connectionCount = 0;
 
   // Timers and intervals
   _timers: Timers = {
@@ -126,12 +130,12 @@ class QuiqSocket {
   };
 
   // Connection state
-  _lastPongReceivedTimestamp: number;
+  _lastPongReceivedTimestamp: number | undefined;
 
   // Status flags
-  _waitingForOnlineToReconnect: boolean = false;
-  _inRetryCycle: boolean = false;
-  _connecting: boolean = false;
+  _waitingForOnlineToReconnect = false;
+  _inRetryCycle = false;
+  _connecting = false;
 
   // Logger
   _log: Logging = console;
@@ -181,7 +185,7 @@ class QuiqSocket {
    * Adds an event listener to the specified event.
    * This method is idempotent.
    */
-  addEventListener = (event: EventName, handler: Function): QuiqSocket => {
+  addEventListener = (event: EventName, handler: (data: any) => void): QuiqSocket => {
     if (!this._handlers[event].includes(handler)) {
       this._handlers[event].push(handler);
     }
@@ -191,7 +195,7 @@ class QuiqSocket {
   /**
    * Removes a given event handler.
    */
-  removeEventListener = (event: EventName, handler: Function): QuiqSocket => {
+  removeEventListener = (event: EventName, handler: (data: any) => void): QuiqSocket => {
     const idx = this._handlers[event].indexOf(handler);
     if (idx > -1) {
       this._handlers[event].splice(idx, 1);
@@ -588,7 +592,7 @@ class QuiqSocket {
     }
   };
 
-  _fireHandlers = (event: EventName, data: ?Object) => {
+  _fireHandlers = (event: EventName, data?: Record<string, unknown>) => {
     this._handlers[event].forEach(handler => {
       if (data) {
         handler(data);
