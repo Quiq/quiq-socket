@@ -143,7 +143,7 @@ class QuiqSocket {
   constructor() {
     // NOTE: We use 'waitingForOnlineToReconnect' as a flag for whether to attempt reconnecting after an 'online' event.
     // In other words, QuiqSocket must have recorded an 'offline' event prior to the 'online' event if it's going to reconnect.
-    window.addEventListener('online', () => {
+    globalThis.addEventListener('online', () => {
       this._log.info('QuiqSocket online event');
       if (this._waitingForOnlineToReconnect) {
         this.connect();
@@ -151,7 +151,7 @@ class QuiqSocket {
       this._waitingForOnlineToReconnect = false;
     });
 
-    window.addEventListener('offline', () => {
+    globalThis.addEventListener('offline', () => {
       this._log.info('QuiqSocket offline event');
       if (this._socket) {
         this._waitingForOnlineToReconnect = true;
@@ -161,7 +161,7 @@ class QuiqSocket {
     });
 
     // Unload listener - the browser implementation should send close frame automatically, but you can never be too sure...
-    window.addEventListener('unload', () => {
+    globalThis.addEventListener('unload', () => {
       this._log.info('QuiqSocket unload event');
       if (this._socket) {
         this._reset();
@@ -170,11 +170,13 @@ class QuiqSocket {
     });
 
     // Focus listener: this is used to detect computer coming back from sleep, but will be fired anytime tab is focused.
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        this._verifyConnectivity();
-      }
-    });
+    if (globalThis.document) {
+      globalThis.document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          this._verifyConnectivity();
+        }
+      });
+    }
   }
 
   /** ******************************
@@ -255,7 +257,7 @@ class QuiqSocket {
       return this;
     }
 
-    if (!window.WebSocket) {
+    if (!globalThis.WebSocket) {
       throw new Error('QuiqSockets: This browser does not support websockets');
     }
 
