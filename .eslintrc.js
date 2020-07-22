@@ -1,5 +1,5 @@
 module.exports = {
-  parser: 'babel-eslint',
+  parser: '@typescript-eslint/parser',
   rules: {
     /**
      * General Rules
@@ -199,9 +199,23 @@ module.exports = {
     'default-case': 0,
     'block-spacing': 0,
     'no-lonely-if': 0,
-  },
-  extends: 'airbnb',
 
+    /**
+     * Override base configs
+     */
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/explicit-module-boundary-types': 'off',
+    '@typescript-eslint/no-unsafe-assignment': 'off',
+    '@typescript-eslint/no-unsafe-member-access': 'off',
+    '@typescript-eslint/no-unsafe-call': 'off',
+    '@typescript-eslint/restrict-template-expressions': 'off',
+    '@typescript-eslint/no-empty-function': 'off',
+  },
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:@typescript-eslint/recommended-requiring-type-checking',
+  ],
   env: {
     es6: true,
     browser: true,
@@ -209,19 +223,13 @@ module.exports = {
     node: true,
   },
   parserOptions: {
-    ecmaVersion: 6,
+    tsconfigRootDir: __dirname,
+    project: ['./tsconfig.json'],
+    ecmaVersion: 2018,
     sourceType: 'module',
     ecmaFeatures: {
-      experimentalObjectRestSpread: true,
+      impliedStrict: true,
     },
   },
-  plugins: ['flowtype'],
-  globals: {
-    TimeoutID: false,
-    IntervalID: false,
-    jest: false,
-    T: false,
-    $Subtype: false,
-    $Enum: false,
-  },
+  plugins: ['@typescript-eslint'],
 };
