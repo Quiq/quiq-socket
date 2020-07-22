@@ -2,6 +2,16 @@ import StatusCodes from './StatusCodes';
 import clamp from 'lodash/clamp';
 import {formatQueryParams} from './Utils';
 
+// Support for webworker context's 'self' and IE11 compatibility (no globalThis)
+const global =
+  typeof self !== 'undefined'
+    ? self
+    : typeof window !== 'undefined'
+    ? window
+    : typeof globalThis !== 'undefined'
+    ? globalThis
+    : undefined;
+
 type Timeout = ReturnType<typeof setTimeout>;
 type Interval = ReturnType<typeof setInterval>;
 
@@ -141,41 +151,46 @@ class QuiqSocket {
   _log: Logging = console;
 
   constructor() {
-    // NOTE: We use 'waitingForOnlineToReconnect' as a flag for whether to attempt reconnecting after an 'online' event.
-    // In other words, QuiqSocket must have recorded an 'offline' event prior to the 'online' event if it's going to reconnect.
-    globalThis.addEventListener('online', () => {
-      this._log.info('QuiqSocket online event');
-      if (this._waitingForOnlineToReconnect) {
-        this.connect();
-      }
-      this._waitingForOnlineToReconnect = false;
-    });
+    if (global !== undefined) {
+      // NOTE: We use 'waitingForOnlineToReconnect' as a flag for whether to attempt reconnecting after an 'online' event.
+      // In other words, QuiqSocket must have recorded an 'offline' event prior to the 'online' event if it's going to reconnect.
+      global.addEventListener('online', () => {
+        this._log.info('QuiqSocket online event');
+        if (this._waitingForOnlineToReconnect) {
+          this.connect();
+        }
+        this._waitingForOnlineToReconnect = false;
+      });
 
-    globalThis.addEventListener('offline', () => {
-      this._log.info('QuiqSocket offline event');
-      if (this._socket) {
-        this._waitingForOnlineToReconnect = true;
-        this._reset();
-        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Browser offline'});
-      }
-    });
-
-    // Unload listener - the browser implementation should send close frame automatically, but you can never be too sure...
-    globalThis.addEventListener('unload', () => {
-      this._log.info('QuiqSocket unload event');
-      if (this._socket) {
-        this._reset();
-      }
-      return null;
-    });
-
-    // Focus listener: this is used to detect computer coming back from sleep, but will be fired anytime tab is focused.
-    if (globalThis.document) {
-      globalThis.document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-          this._verifyConnectivity();
+      global.addEventListener('offline', () => {
+        this._log.info('QuiqSocket offline event');
+        if (this._socket) {
+          this._waitingForOnlineToReconnect = true;
+          this._reset();
+          this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Browser offline'});
         }
       });
+
+      // Unload listener - the browser implementation should send close frame automatically, but you can never be too sure...
+      global.addEventListener('unload', () => {
+        this._log.info('QuiqSocket unload event');
+        if (this._socket) {
+          this._reset();
+        }
+        return null;
+      });
+
+      // Focus listener: this is used to detect computer coming back from sleep, but will be fired anytime tab is focused.
+      if (global.document) {
+        global.document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) {
+            this._verifyConnectivity();
+          }
+        });
+      }
+    } else {
+      // If we can't detect the global context, connecting the socket will throw anyway, so just error here instead
+      throw new Error('QuiqSockets: Global context is not compatible');
     }
   }
 
@@ -257,7 +272,7 @@ class QuiqSocket {
       return this;
     }
 
-    if (!globalThis.WebSocket) {
+    if (!(global && global.WebSocket)) {
       throw new Error('QuiqSockets: This browser does not support websockets');
     }
 
