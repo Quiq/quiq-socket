@@ -35,7 +35,9 @@ export type FatalErrorReason = 'MAX_CONNECTION_COUNT_EXCEEDED' | 'UNKNOWN';
 
 export type EventName = 'connectionLoss' | 'connectionEstablish' | 'message' | 'fatalError';
 
-export type FatalErrorCallbackData = {reason: FatalErrorReason};
+export interface FatalErrorCallbackData {
+  reason: FatalErrorReason;
+}
 
 export type Options = {
   // Number of times to attempt reconnecting on a single connection
@@ -237,12 +239,15 @@ class QuiqSocket {
 
   /**
    * Updates default options with the object provided. (IThese options are merged with the defaults.)
-   * @param {Object} options - An object containing QuiqSocket options.
+   * @param {Partial<Options>} options - An object containing QuiqSocket options.
    * @returns {QuiqSocket} This instance of QuiqSocket, to allow for chaining
    */
-  withOptions = (options: Options): QuiqSocket => {
+  withOptions = (options: Partial<Options>): QuiqSocket => {
     // Option validation
-    if (options.heartbeatTimeout >= options.heartbeatFrequency) {
+    const heartbeatTimeout = options.heartbeatTimeout || this._options.heartbeatTimeout;
+    const heartbeatFrequency = options.heartbeatFrequency || this._options.heartbeatFrequency;
+
+    if (heartbeatTimeout >= heartbeatFrequency) {
       this._log.error(
         'Heartbeat timeout must be less than heartbeat interval. Not updating options',
       );
