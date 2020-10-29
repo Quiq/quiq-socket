@@ -186,7 +186,7 @@ class QuiqSocket {
       if (global.document) {
         global.document.addEventListener('visibilitychange', () => {
           if (!document.hidden) {
-            this._verifyConnectivity();
+            void this.verifyConnectivity();
           }
         });
       }
@@ -287,7 +287,7 @@ class QuiqSocket {
       return this;
     }
 
-    // Reset connection and tiemout state
+    // Reset connection and timeout state
     this._reset();
 
     this._log.info('Connecting socket...');
@@ -316,7 +316,7 @@ class QuiqSocket {
     // Connect socket.
     const parsedUrl = formatQueryParams(this._url, queryArgs);
 
-    // Set tiemout to trigger reconnect if _onOpen isn't called quiqly enough
+    // Set timeout to trigger reconnect if _onOpen isn't called quiqly enough
     // This catches all cases where we fail to even open the socket--even if construction fails in the try/catch below.
     this._timers.connectionTimeout = setTimeout(() => {
       this._log.warn('Connection attempt timed out.');
@@ -362,6 +362,65 @@ class QuiqSocket {
     return this;
   };
 
+  /**
+   * Verifies websocket connectivity.  Checks the time since the last received heartbeat response
+   * to make sure it's within the heartbeat frequency.  If it isn't, initiates reconnection.  If it is,
+   * ensures communications are open by firing a manual heartbeat and waiting for the response.  If no response
+   * is received within the heartbeatTimeout, initiates reconnection; if one is, restarts heartbeat.
+   * @returns A boolean promise. Resolves to true if socket appears healthy and communcation is confirmed or
+   *          false if socket isn't ready or has missed a heartbeat. Rejects if the socket appears healthy but
+   *          manual communication attempt times out.
+   */
+  verifyConnectivity = (): Promise<boolean> => {
+    return new Promise((res, rej) => {
+      // Only continue if we are in CONNECTED state (readyState === 1)
+      if (!this._socket || this._socket.readyState !== 1 || !this._lastPongReceivedTimestamp) {
+        this._log.warn('Connectivity could not be verified - socket not in a ready state');
+        return res(false);
+      }
+
+      this._log.info('Verifying connectivity');
+
+      if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
+        // Fire connection loss handlers and initiate reconnect
+        this._log.info('Our heart has skipped a beat...reconnecting.');
+        this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
+        this.connect();
+        res(false);
+      } else {
+        // Ensure socket communication is open
+        this._log.info('Socket appears healthy, sending manual heartbeat PING');
+
+        this._socket.onmessage = (e: MessageEvent) => {
+          if (e.data && e.data === 'X') {
+            // whether we receive PONG from this PING or the normal heartbeat, we clear and restart
+            this._log.info(`Manual PONG received, resuming normal heartbeat`);
+            if (this._timers.heartbeat.timeout) {
+              clearTimeout(this._timers.heartbeat.timeout);
+              this._timers.heartbeat.timeout = null;
+            }
+            this._startHeartbeat();
+            // put the normal handler back
+            if (this._socket) this._socket.onmessage = this._handleMessage;
+            return res(true);
+          }
+          // invoke normal handler if other data comes through
+          this._handleMessage(e);
+        };
+
+        // Set manual heartbeatTimeout
+        this._timers.heartbeat.timeout = setTimeout(() => {
+          // If manual heartbeat times out, the connection may not be functional, let's rebuild it to be safe
+          this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
+          this.connect();
+          rej('Socket appeared healthy but communication is unresponsive');
+        }, this._options.heartbeatTimeout);
+
+        this._socket.send('X');
+      }
+    });
+  };
+
   /** ******************************
    * Private Members
    ****************************** */
@@ -404,6 +463,7 @@ class QuiqSocket {
    * @private
    */
   _reset = () => {
+    this._log.info('Resetting socket state');
     // Close existing connection
     if (this._socket) {
       // Remove event handlers -- we don't care about this socket anymore.
@@ -457,6 +517,7 @@ class QuiqSocket {
         clearTimeout(this._timers.heartbeat.timeout);
         this._timers.heartbeat.timeout = null;
       }
+      this._log.info(`Heartbeat PONG received at ${this._lastPongReceivedTimestamp}`);
       return;
     }
 
@@ -597,21 +658,6 @@ class QuiqSocket {
       // Send ping
       this._socket.send('X');
     }, this._options.heartbeatFrequency);
-  };
-
-  _verifyConnectivity = () => {
-    // Only continue if we are in CONNECTED state (readyState === 1)
-    if (!this._socket || this._socket.readyState !== 1 || !this._lastPongReceivedTimestamp) return;
-
-    this._log.info('Verifying connectivity');
-
-    if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
-      this._log.info('Our heart has skipped a beat...reconnecting.');
-      // Fire event handlers
-      this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
-      // Reconnect
-      this.connect();
-    }
   };
 
   _fireHandlers = (event: EventName, data?: Record<string, unknown>) => {
