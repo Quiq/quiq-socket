@@ -409,6 +409,7 @@ class QuiqSocket {
         };
 
         // Set manual heartbeatTimeout
+        if (this._timers.heartbeat.timeout) clearTimeout(this._timers.heartbeat.timeout);
         this._timers.heartbeat.timeout = setTimeout(() => {
           // If manual heartbeat times out, the connection may not be functional, let's rebuild it to be safe
           this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
