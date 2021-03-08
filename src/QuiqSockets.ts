@@ -25,10 +25,20 @@ type Timers = {
   gracePeriod: Timeout | null | undefined;
 };
 
+type SocketHealthChangeEvent = {
+  connectionCount: number;
+  lastPingSentTimestamp: number | undefined;
+  lastPongReceivedTimestamp: number | undefined;
+  connectionOpenedTimestamp: number | undefined;
+  heartbeatJitter: number | undefined;
+  heartbeatRtts: Array<number>;
+  socketErrors: Array<any>;
+};
+
 interface Logging {
-  info: (...args: Array<any>) => void;
-  warn: (...args: Array<any>) => void;
-  error: (...args: Array<any>) => void;
+  info: (message: any) => void;
+  warn: (message: any) => void;
+  error: (message: any) => void;
 }
 
 export type FatalErrorReason = 'MAX_CONNECTION_COUNT_EXCEEDED' | 'UNKNOWN';
@@ -81,6 +91,9 @@ export type Options = {
   // Defines a hook function, called before every connection attempt,
   // that can block the connection attempt by returning false.
   connectionGuardHook?: () => boolean;
+
+  // Defines a callback function, called whenever socket health statistics change
+  onSocketHealthChange?: (e: SocketHealthChangeEvent) => void;
 };
 
 export enum FatalErrors {
@@ -142,7 +155,12 @@ class QuiqSocket {
   };
 
   // Connection state
+  _lastPingSentTimestamp: number | undefined;
   _lastPongReceivedTimestamp: number | undefined;
+  _connectionOpenedTimestamp: number | undefined;
+  _heartbeatRtts: Array<number> = [];
+  _heartbeatJitter: number | undefined;
+  _socketErrors: Array<any> = [];
 
   // Status flags
   _waitingForOnlineToReconnect = false;
@@ -186,7 +204,7 @@ class QuiqSocket {
       if (global.document) {
         global.document.addEventListener('visibilitychange', () => {
           if (!document.hidden) {
-            void this.verifyConnectivity();
+            void this.verifyConnectivity().catch(reason => this._log.error(reason));
           }
         });
       }
@@ -246,15 +264,41 @@ class QuiqSocket {
     // Option validation
     const heartbeatTimeout = options.heartbeatTimeout || this._options.heartbeatTimeout;
     const heartbeatFrequency = options.heartbeatFrequency || this._options.heartbeatFrequency;
+    const maxConnectionCount = options.maxConnectionCount || this._options.maxConnectionCount;
+
+    if (heartbeatFrequency < 1000) {
+      this._log.error(
+        `Invalid QuiqSocket Options: Heartbeat frequency cannot be set to less than 1000 ms. Not updating options`,
+      );
+      return this;
+    }
+
+    if (heartbeatTimeout < 1000) {
+      this._log.error(
+        `Invalid QuiqSocket Options: Heartbeat timeout cannot be set to less than 1000 ms. Not updating options`,
+      );
+      return this;
+    }
 
     if (heartbeatTimeout >= heartbeatFrequency) {
       this._log.error(
-        'Heartbeat timeout must be less than heartbeat interval. Not updating options',
+        'Invalid QuiqSocket Options: Heartbeat timeout must be less than heartbeat interval. Not updating options',
+      );
+      return this;
+    }
+
+    if (maxConnectionCount < 1) {
+      this._log.error(
+        'Invalid QuiqSocket Options: Max connection count must be greater than 0. Not updating options',
       );
       return this;
     }
 
     this._options = {...this._options, ...options};
+
+    this._log.info(`Socket heartbeat frequency set to ${this._options.heartbeatFrequency}`);
+    this._log.info(`Socket heartbeat timeout set to ${this._options.heartbeatTimeout}`);
+    this._log.info(`Max connection count set to ${this._options.maxConnectionCount}`);
     return this;
   };
 
@@ -327,9 +371,12 @@ class QuiqSocket {
     try {
       this._socket = protocol ? new WebSocket(parsedUrl, protocol) : new WebSocket(parsedUrl);
     } catch (e) {
-      this._log.error(`Unable to construct WebSocket: ${e.message}`, {
-        data: {url: parsedUrl},
-        exception: e,
+      this._log.error({
+        message: `Unable to construct WebSocket: ${e.message}`,
+        context: {
+          data: {url: parsedUrl},
+          exception: e,
+        },
       });
       throw new Error('QuiqSocket: Cannot construct WebSocket.');
     }
@@ -342,6 +389,7 @@ class QuiqSocket {
 
     // Increment "global" connection count
     this._connectionCount++;
+    this._onSocketHealthChange();
 
     return this;
   };
@@ -384,27 +432,29 @@ class QuiqSocket {
       if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
         // Fire connection loss handlers and initiate reconnect
         this._log.info('Our heart has skipped a beat...reconnecting.');
-        this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
+        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat failure'});
         this.connect();
         res(false);
       } else {
-        // Ensure socket communication is open
+        // Ensure socket communication is open with manual heartbeat
         this._log.info('Socket appears healthy, sending manual heartbeat PING');
 
         this._socket.onmessage = (e: MessageEvent) => {
           if (e.data && e.data === 'X') {
-            // whether we receive PONG from this PING or the normal heartbeat, we clear and restart
-            this._log.info(`Manual PONG received, resuming normal heartbeat`);
+            // Put the normal handler back and update state
+            if (this._socket) this._socket.onmessage = this._handleMessage;
+            this._pongReceived();
+
+            // Clear and restart normal heartbeat
             if (this._timers.heartbeat.timeout) {
               clearTimeout(this._timers.heartbeat.timeout);
               this._timers.heartbeat.timeout = null;
             }
-            this._startHeartbeat();
-            // put the normal handler back
-            if (this._socket) this._socket.onmessage = this._handleMessage;
+            this._startHeartbeat(true);
+
             return res(true);
           }
-          // invoke normal handler if other data comes through
+          // Invoke normal handler if other data comes through!
           this._handleMessage(e);
         };
 
@@ -412,12 +462,12 @@ class QuiqSocket {
         if (this._timers.heartbeat.timeout) clearTimeout(this._timers.heartbeat.timeout);
         this._timers.heartbeat.timeout = setTimeout(() => {
           // If manual heartbeat times out, the connection may not be functional, let's rebuild it to be safe
-          this._fireHandlers(Events.CONNECTION_LOSS, {code: 1001, reason: 'Heartbeat failure'});
+          this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat timeout'});
           this.connect();
           rej('Socket appeared healthy but communication is unresponsive');
         }, this._options.heartbeatTimeout);
 
-        this._socket.send('X');
+        this._sendPing();
       }
     });
   };
@@ -503,6 +553,11 @@ class QuiqSocket {
       this._timers.heartbeat.timeout = null;
       this._log.info('Invalidated heartbeat timeout');
     }
+
+    this._lastPingSentTimestamp = undefined;
+    this._lastPongReceivedTimestamp = undefined;
+    this._heartbeatRtts.length = 0;
+    this._heartbeatJitter = undefined;
   };
 
   /**
@@ -513,12 +568,12 @@ class QuiqSocket {
   _handleMessage = (e: MessageEvent) => {
     // If this is a pong, update pong timestamp and clear heartbeat timeout
     if (e.data && e.data === 'X') {
-      this._lastPongReceivedTimestamp = Date.now();
+      this._pongReceived();
+
       if (this._timers.heartbeat.timeout) {
         clearTimeout(this._timers.heartbeat.timeout);
         this._timers.heartbeat.timeout = null;
       }
-      this._log.info(`Heartbeat PONG received at ${this._lastPongReceivedTimestamp}`);
       return;
     }
 
@@ -532,9 +587,12 @@ class QuiqSocket {
         this._log.error('Websocket message data was not of string type');
       }
     } catch (ex) {
-      this._log.error(`Unable to handle websocket message: ${ex.message}`, {
-        data: {message: e.data},
-        exception: ex,
+      this._log.error({
+        message: `Unable to handle websocket message: ${ex.message}`,
+        context: {
+          data: {message: e.data},
+          exception: ex,
+        },
       });
     }
   };
@@ -550,6 +608,8 @@ class QuiqSocket {
     }
 
     this._log.info(`Socket opened to ${this._socket.url}`);
+    this._connectionOpenedTimestamp = Date.now();
+    this._onSocketHealthChange();
 
     // Clear timeout
     if (this._timers.connectionTimeout) {
@@ -583,7 +643,10 @@ class QuiqSocket {
    */
   _handleClose = (e: CloseEvent) => {
     const dirtyOrClean = e.wasClean ? 'CLEANLY' : 'DIRTILY';
-    this._log.info(`Socket ${dirtyOrClean} closed unexpectedly with code ${e.code}: ${e.reason}.`);
+    this._log.info({
+      message: `Socket ${dirtyOrClean} closed unexpectedly with code ${e.code}: ${e.reason}.`,
+      context: {event: e},
+    });
 
     this._connecting = false; // In case it closed during connection attempt
 
@@ -612,7 +675,9 @@ class QuiqSocket {
     // NOTE: onError event is not provided with any information, onClose must deal with causeality.
     // This is simply a notification.
     // We'll pass a potential exception just in case; apparently some browsers will provide one.
-    this._log.warn('A websocket error occurred.', {exception: e});
+    this._log.warn({message: 'A websocket error occurred.', context: {exception: e}});
+    this._socketErrors.push(e);
+    this._onSocketHealthChange();
   };
 
   /**
@@ -629,15 +694,12 @@ class QuiqSocket {
    * Initiates websocket heartbeat interval. Must be called upon websocket open. Heartbeat interval must be cleared upon socket close.
    * @private
    */
-  _startHeartbeat = () => {
+  _startHeartbeat = (restarting = false) => {
     if (this._timers.heartbeat.interval) {
       clearInterval(this._timers.heartbeat.interval);
     }
 
-    // Update pong time
-    this._lastPongReceivedTimestamp = Date.now();
-
-    this._timers.heartbeat.interval = setInterval(() => {
+    const heartBeat = () => {
       // Initiate heartbeat timeout--we must receive a pong back within this time frame.
       // This will be cleared when we receive an 'X'
       if (this._timers.heartbeat.timeout) {
@@ -650,15 +712,94 @@ class QuiqSocket {
         this.connect();
       }, this._options.heartbeatTimeout);
 
-      // Verify we have a socket connection
-      if (!this._socket) {
-        this._log.error('Trying to send heartbeat, but no socket connection exists.');
-        return;
-      }
+      this._sendPing();
+    };
 
-      // Send ping
-      this._socket.send('X');
-    }, this._options.heartbeatFrequency);
+    this._timers.heartbeat.interval = setInterval(heartBeat, this._options.heartbeatFrequency);
+
+    // Execute initial beat if needed
+    if (!restarting) heartBeat();
+  };
+
+  /**
+   * Sends a websocket heartbeat message ('X')
+   * @private
+   */
+  _sendPing = () => {
+    // Verify we have a socket connection
+    if (!this._socket) {
+      this._log.error('Trying to send heartbeat, but no socket connection exists.');
+      return;
+    }
+
+    // Send ping
+    this._lastPingSentTimestamp = Date.now();
+    this._socket.send('X');
+  };
+
+  /**
+   * Updates socket round-trip-time measurements
+   * @private
+   */
+  _pongReceived = () => {
+    this._lastPongReceivedTimestamp = Date.now();
+
+    if (
+      this._lastPingSentTimestamp === undefined ||
+      this._lastPongReceivedTimestamp === undefined
+    ) {
+      return;
+    }
+
+    // RTT
+    const rtt = this._lastPongReceivedTimestamp - this._lastPingSentTimestamp;
+    this._heartbeatRtts.push(rtt);
+    // We only care about the most recent values
+    if (this._heartbeatRtts.length > 10) {
+      this._heartbeatRtts.shift();
+    }
+    this._log.info(`Last heartbeat RTT: ${rtt} ms`);
+
+    // Jitter
+    if (this._heartbeatRtts.length > 1) {
+      const meanRtt = Math.round(
+        this._heartbeatRtts.reduce((acc, val) => acc + val) / this._heartbeatRtts.length,
+      );
+      this._log.info(`Mean RTT: ${meanRtt} ms`);
+
+      const diffs = this._heartbeatRtts.map((rtt, i) => {
+        if (i === 0) return 0; // first value isn't useful
+        return Math.abs(rtt - this._heartbeatRtts[i - 1]);
+      });
+      diffs.shift(); // discard useless value
+
+      this._heartbeatJitter = Math.round(diffs.reduce((acc, val) => acc + val) / diffs.length);
+      this._log.info(
+        `Hearbeat Jitter: ${this._heartbeatJitter} ms (${Math.round(
+          (this._heartbeatJitter / meanRtt) * 100,
+        )}%)`,
+      );
+    }
+
+    this._onSocketHealthChange();
+  };
+
+  /**
+   * Invokes the onSocketHealthChange callback, if provided
+   * @private
+   */
+  _onSocketHealthChange = () => {
+    if (typeof this._options.onSocketHealthChange === 'function') {
+      this._options.onSocketHealthChange({
+        connectionCount: this._connectionCount,
+        lastPingSentTimestamp: this._lastPingSentTimestamp,
+        lastPongReceivedTimestamp: this._lastPongReceivedTimestamp,
+        connectionOpenedTimestamp: this._connectionOpenedTimestamp,
+        heartbeatJitter: this._heartbeatJitter,
+        heartbeatRtts: this._heartbeatRtts,
+        socketErrors: this._socketErrors,
+      });
+    }
   };
 
   _fireHandlers = (event: EventName, data?: Record<string, unknown>) => {

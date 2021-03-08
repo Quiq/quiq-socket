@@ -1,6 +1,6 @@
 {
   "name": "quiq-socket",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "WebSocket API wrapper with automatic retry handling and heartbeat",
   "main": "dist/index.js",
   "types": "dist/types/index.d.js",
