@@ -36,9 +36,9 @@ type SocketHealthChangeEvent = {
 };
 
 interface Logging {
-  info: (message: any) => void;
-  warn: (message: any) => void;
-  error: (message: any) => void;
+  info: (...args: Array<any>) => void;
+  warn: (...args: Array<any>) => void;
+  error: (...args: Array<any>) => void;
 }
 
 export type FatalErrorReason = 'MAX_CONNECTION_COUNT_EXCEEDED' | 'UNKNOWN';
@@ -371,12 +371,9 @@ class QuiqSocket {
     try {
       this._socket = protocol ? new WebSocket(parsedUrl, protocol) : new WebSocket(parsedUrl);
     } catch (e) {
-      this._log.error({
-        message: `Unable to construct WebSocket: ${e.message}`,
-        context: {
-          data: {url: parsedUrl},
-          exception: e,
-        },
+      this._log.error(`Unable to construct WebSocket: ${e.message}`, {
+        data: {url: parsedUrl},
+        exception: e,
       });
       throw new Error('QuiqSocket: Cannot construct WebSocket.');
     }
@@ -423,7 +420,11 @@ class QuiqSocket {
     return new Promise((res, rej) => {
       // Only continue if we are in CONNECTED state (readyState === 1)
       if (!this._socket || this._socket.readyState !== 1 || !this._lastPongReceivedTimestamp) {
-        this._log.warn('Connectivity could not be verified - socket not in a ready state');
+        this._log.warn('Connectivity could not be verified - socket not in a ready state', {
+          socketDefined: !!this._socket,
+          readyState: this._socket && this._socket.readyState,
+          lastPongTimestamp: this._lastPongReceivedTimestamp,
+        });
         return res(false);
       }
 
@@ -587,12 +588,9 @@ class QuiqSocket {
         this._log.error('Websocket message data was not of string type');
       }
     } catch (ex) {
-      this._log.error({
-        message: `Unable to handle websocket message: ${ex.message}`,
-        context: {
-          data: {message: e.data},
-          exception: ex,
-        },
+      this._log.error(`Unable to handle websocket message: ${ex.message}`, {
+        data: {message: e.data},
+        exception: ex,
       });
     }
   };
@@ -643,10 +641,7 @@ class QuiqSocket {
    */
   _handleClose = (e: CloseEvent) => {
     const dirtyOrClean = e.wasClean ? 'CLEANLY' : 'DIRTILY';
-    this._log.info({
-      message: `Socket ${dirtyOrClean} closed unexpectedly with code ${e.code}: ${e.reason}.`,
-      context: {event: e},
-    });
+    this._log.info(`Socket ${dirtyOrClean} closed unexpectedly with code ${e.code}: ${e.reason}.`);
 
     this._connecting = false; // In case it closed during connection attempt
 
@@ -675,8 +670,13 @@ class QuiqSocket {
     // NOTE: onError event is not provided with any information, onClose must deal with causeality.
     // This is simply a notification.
     // We'll pass a potential exception just in case; apparently some browsers will provide one.
-    this._log.warn({message: 'A websocket error occurred.', context: {exception: e}});
-    this._socketErrors.push(e);
+    this._log.warn('A websocket error occurred.', {exception: e});
+    try {
+      const safeError = JSON.parse(JSON.stringify(e));
+      this._socketErrors.push(safeError);
+    } catch (e) {
+      this._socketErrors.push('Unknown error');
+    }
     this._onSocketHealthChange();
   };
 
