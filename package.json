@@ -1,6 +1,6 @@
 {
   "name": "quiq-socket",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "WebSocket API wrapper with automatic retry handling and heartbeat",
   "main": "dist/index.js",
   "types": "dist/types/index.d.js",
@@ -75,6 +75,9 @@
     "dist"
   ],
   "resolutions": {
-    "serialize-javascript": "2.1.2"
+    "serialize-javascript": "3.1.0",
+    "lodash": "4.17.21",
+    "node-forge": "0.10.0",
+    "node-fetch": "2.6.1"
   }
 }
