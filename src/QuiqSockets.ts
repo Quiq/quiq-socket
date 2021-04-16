@@ -364,6 +364,8 @@ class QuiqSocket {
     // This catches all cases where we fail to even open the socket--even if construction fails in the try/catch below.
     this._timers.connectionTimeout = setTimeout(() => {
       this._log.warn('Connection attempt timed out.');
+      this._connecting = false;
+      this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Connection timeout'});
       this._retryConnection();
     }, this._options.connectionAttemptTimeout);
 
