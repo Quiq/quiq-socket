@@ -2,6 +2,10 @@
 
 ## master
 
+## 0.3.4
+
+dependency upgrades
+
 ## 0.0.4
 
 * Expose StubbornFetchError export
