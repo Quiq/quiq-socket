@@ -166,6 +166,7 @@ class QuiqSocket {
   _waitingForOnlineToReconnect = false;
   _inRetryCycle = false;
   _connecting = false;
+  _isDead = false;
 
   // Logger
   _log: Logging = console;
@@ -308,8 +309,15 @@ class QuiqSocket {
    * @returns {QuiqSocket} This instance of QuiqSocket, to allow for chaining
    */
   connect = (): QuiqSocket => {
+    // It's dead, Jim
+    if (this._isDead) {
+      this._log.warn('Dead socket tried to connect, aborting');
+      return this;
+    }
+
     // Make this thing idempotent: if a connection is already in progress, let it be
     if (this._connecting) {
+      this._log.info('Socket connection is already in progress');
       return this;
     }
 
@@ -398,13 +406,24 @@ class QuiqSocket {
    * @returns {QuiqSocket} This instance of QuiqSocket, to allow for chaining
    */
   disconnect = (): QuiqSocket => {
-    if (this._socket) {
-      this._log.info('Closing socket intentionally');
-    }
+    this._log.info(`Disconnecting socket intentionally...`);
 
     this._reset();
 
     this._connecting = this._inRetryCycle = false;
+
+    return this;
+  };
+
+  /**
+   * Disconnects the websocket and prevents it from being re-connected.
+   */
+  kill = (): QuiqSocket => {
+    this._log.info('Killing current socket');
+
+    this.disconnect();
+
+    this._isDead = true;
 
     return this;
   };
@@ -430,7 +449,7 @@ class QuiqSocket {
         return res(false);
       }
 
-      this._log.info('Verifying connectivity');
+      this._log.info('Verifying connectivity...');
 
       if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
         // Fire connection loss handlers and initiate reconnect
@@ -505,7 +524,7 @@ class QuiqSocket {
 
     this._log.info(`Delaying socket reconnect attempt for ${delay} ms`);
 
-    setTimeout(this.connect, delay);
+    this._timers.retryTimeout = setTimeout(this.connect, delay);
 
     this._retries++;
   };
@@ -676,7 +695,7 @@ class QuiqSocket {
     try {
       const safeError = JSON.parse(JSON.stringify(e));
       this._socketErrors.push(safeError);
-    } catch (e) {
+    } catch (_err) {
       this._socketErrors.push('Unknown error');
     }
     this._onSocketHealthChange();
@@ -769,9 +788,9 @@ class QuiqSocket {
       );
       this._log.info(`Mean RTT: ${meanRtt} ms`);
 
-      const diffs = this._heartbeatRtts.map((rtt, i) => {
+      const diffs = this._heartbeatRtts.map((time, i) => {
         if (i === 0) return 0; // first value isn't useful
-        return Math.abs(rtt - this._heartbeatRtts[i - 1]);
+        return Math.abs(time - this._heartbeatRtts[i - 1]);
       });
       diffs.shift(); // discard useless value
 
