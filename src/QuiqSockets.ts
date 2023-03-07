@@ -205,7 +205,7 @@ class QuiqSocket {
       if (global.document) {
         global.document.addEventListener('visibilitychange', () => {
           if (!document.hidden) {
-            void this.verifyConnectivity().catch(reason => this._log.error(reason));
+            void this.verifyConnectivity().catch((reason) => this._log.error(reason));
           }
         });
       }
@@ -380,7 +380,7 @@ class QuiqSocket {
     // Make connection
     try {
       this._socket = protocol ? new WebSocket(parsedUrl, protocol) : new WebSocket(parsedUrl);
-    } catch (e) {
+    } catch (e: any) {
       this._log.error(`Unable to construct WebSocket: ${e.message}`, {
         data: {url: parsedUrl},
         exception: e,
@@ -608,7 +608,7 @@ class QuiqSocket {
       } else {
         this._log.error('Websocket message data was not of string type');
       }
-    } catch (ex) {
+    } catch (ex: any) {
       this._log.error(`Unable to handle websocket message: ${ex.message}`, {
         data: {message: e.data},
         exception: ex,
@@ -824,7 +824,7 @@ class QuiqSocket {
   };
 
   _fireHandlers = (event: EventName, data?: Record<string, unknown>) => {
-    this._handlers[event].forEach(handler => {
+    this._handlers[event].forEach((handler) => {
       if (data) {
         handler(data);
       } else {
