@@ -1,6 +1,6 @@
 {
   "name": "quiq-socket",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "WebSocket API wrapper with automatic retry handling and heartbeat",
   "main": "dist/index.js",
   "types": "dist/types/index.d.js",
@@ -64,7 +64,7 @@
     "@typescript-eslint/parser": "^3.6.0",
     "ajv": "^6.4.0",
     "fetch-mock": "^6.3.0",
-    "quiq-scripts": "^1.10.48",
+    "quiq-scripts": "^1.10.57",
     "rollup": "^1.20.3",
     "rollup-plugin-babel": "^4.3.3",
     "rollup-plugin-commonjs": "^10.1.0",
@@ -77,6 +77,8 @@
   "resolutions": {
     "serialize-javascript": "3.1.0",
     "lodash": "4.17.21",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "express": "^4.19.2",
+    "follow-redirects": "^1.15.6"
   }
 }
