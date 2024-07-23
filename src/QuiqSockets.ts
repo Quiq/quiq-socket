@@ -439,27 +439,36 @@ class QuiqSocket {
    */
   verifyConnectivity = (): Promise<boolean> => {
     return new Promise((res, rej) => {
-      // Only continue if we are in CONNECTED state (readyState === 1)
-      if (!this._socket || this._socket.readyState !== 1 || !this._lastPongReceivedTimestamp) {
-        this._log.warn('Connectivity could not be verified - socket not in a ready state', {
-          socketDefined: !!this._socket,
-          readyState: this._socket && this._socket.readyState,
-          lastPongTimestamp: this._lastPongReceivedTimestamp,
-        });
+      if (!this._socket) {
+        // if socket was disconnected intentionally or we are waiting to retry, make sure connection loss event was raised
+        this._log.warn('Connectivity could not be verified - no socket instance available');
+        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'No socket instance'});
         return res(false);
       }
 
-      this._log.info('Verifying connectivity...');
+      if (this._socket.readyState === 0) {
+        this._log.warn('Connectivity could not be verified - socket is still connecting');
+        return res(false);
+      }
+
+      if (!this._lastPongReceivedTimestamp) {
+        this._log.warn(
+          'Connectivity could not be verified - no pong timestamp has been received yet',
+        );
+        return res(false);
+      }
+
+      this._log.info(`Verifying connectivity... (Socket State: ${this._socket.readyState}`);
 
       if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
         // Fire connection loss handlers and initiate reconnect
-        this._log.info('Our heart has skipped a beat...reconnecting.');
+        this._log.info('Our heart has skipped a beat! Reconnecting...');
         this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat failure'});
         this.connect();
         res(false);
       } else {
         // Ensure socket communication is open with manual heartbeat
-        this._log.info('Socket appears healthy, sending manual heartbeat PING');
+        this._log.info('Socket appears healthy, sending manual heartbeat PING...');
 
         this._socket.onmessage = (e: MessageEvent) => {
           if (e.data && e.data === 'X') {
@@ -486,7 +495,7 @@ class QuiqSocket {
           // If manual heartbeat times out, the connection may not be functional, let's rebuild it to be safe
           this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat timeout'});
           this.connect();
-          rej('Socket appeared healthy but communication is unresponsive');
+          rej('Socket appeared healthy but communication is unresponsive! Reconnecting...');
         }, this._options.heartbeatTimeout);
 
         this._sendPing();
@@ -575,11 +584,6 @@ class QuiqSocket {
       this._timers.heartbeat.timeout = null;
       this._log.info('Invalidated heartbeat timeout');
     }
-
-    this._lastPingSentTimestamp = undefined;
-    this._lastPongReceivedTimestamp = undefined;
-    this._heartbeatRtts.length = 0;
-    this._heartbeatJitter = undefined;
   };
 
   /**
