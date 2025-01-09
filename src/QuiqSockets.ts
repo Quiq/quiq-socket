@@ -167,6 +167,7 @@ class QuiqSocket {
   _inRetryCycle = false;
   _connecting = false;
   _isDead = false;
+  _isDestroyed = false;
 
   // Logger
   _log: Logging = console;
@@ -425,6 +426,22 @@ class QuiqSocket {
 
     this._isDead = true;
 
+    return this;
+  };
+
+  /**
+   * (1) Kills: Disconnects the websocket and prevents it from being re-connected.
+   * (2) Removes all event listeners.
+   */
+  destroy = (): QuiqSocket => {
+    this._isDestroyed = true;
+    this.kill();
+    this._handlers = {
+      [Events.CONNECTION_ESTABLISH]: [],
+      [Events.CONNECTION_LOSS]: [],
+      [Events.MESSAGE]: [],
+      [Events.FATAL_ERROR]: [],
+    };
     return this;
   };
 
