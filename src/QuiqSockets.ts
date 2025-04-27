@@ -108,6 +108,14 @@ export enum Events {
   FATAL_ERROR = 'fatalError',
 }
 
+export enum ConnectionLossReasons {
+  BROWSER_DISCONNECT = 'Browser offline',
+  CONNECTION_TIMEOUT = 'Connection timeout',
+  NO_SOCKET_INSTANCE = 'No socket instance',
+  HEARTBEAT_FAILURE = 'Heartbeat failure',
+  HEARTBEAT_TIMEOUT = 'Heartbeat timeout',
+}
+
 class QuiqSocket {
   // Socket endpoint
   _url: string | null | undefined;
@@ -189,7 +197,10 @@ class QuiqSocket {
         if (this._socket) {
           this._waitingForOnlineToReconnect = true;
           this._reset();
-          this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Browser offline'});
+          this._fireHandlers(Events.CONNECTION_LOSS, {
+            code: 0,
+            reason: ConnectionLossReasons.BROWSER_DISCONNECT,
+          });
         }
       });
 
@@ -374,7 +385,10 @@ class QuiqSocket {
     this._timers.connectionTimeout = setTimeout(() => {
       this._log.warn('Connection attempt timed out.');
       this._connecting = false;
-      this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Connection timeout'});
+      this._fireHandlers(Events.CONNECTION_LOSS, {
+        code: 0,
+        reason: ConnectionLossReasons.CONNECTION_TIMEOUT,
+      });
       this._retryConnection();
     }, this._options.connectionAttemptTimeout);
 
@@ -459,7 +473,10 @@ class QuiqSocket {
       if (!this._socket) {
         // if socket was disconnected intentionally or we are waiting to retry, make sure connection loss event was raised
         this._log.warn('Connectivity could not be verified - no socket instance available');
-        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'No socket instance'});
+        this._fireHandlers(Events.CONNECTION_LOSS, {
+          code: 0,
+          reason: ConnectionLossReasons.NO_SOCKET_INSTANCE,
+        });
         return res(false);
       }
 
@@ -480,7 +497,10 @@ class QuiqSocket {
       if (Date.now() - this._lastPongReceivedTimestamp > this._options.heartbeatFrequency) {
         // Fire connection loss handlers and initiate reconnect
         this._log.info('Our heart has skipped a beat! Reconnecting...');
-        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat failure'});
+        this._fireHandlers(Events.CONNECTION_LOSS, {
+          code: 0,
+          reason: ConnectionLossReasons.HEARTBEAT_FAILURE,
+        });
         this.connect();
         res(false);
       } else {
@@ -510,7 +530,10 @@ class QuiqSocket {
         if (this._timers.heartbeat.timeout) clearTimeout(this._timers.heartbeat.timeout);
         this._timers.heartbeat.timeout = setTimeout(() => {
           // If manual heartbeat times out, the connection may not be functional, let's rebuild it to be safe
-          this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat timeout'});
+          this._fireHandlers(Events.CONNECTION_LOSS, {
+            code: 0,
+            reason: ConnectionLossReasons.HEARTBEAT_TIMEOUT,
+          });
           this.connect();
           rej('Socket appeared healthy but communication is unresponsive! Reconnecting...');
         }, this._options.heartbeatTimeout);
@@ -749,7 +772,10 @@ class QuiqSocket {
       }
       this._timers.heartbeat.timeout = setTimeout(() => {
         this._log.warn('Heartbeat pong not received back in time. Reconnecting.');
-        this._fireHandlers(Events.CONNECTION_LOSS, {code: 0, reason: 'Heartbeat timeout'});
+        this._fireHandlers(Events.CONNECTION_LOSS, {
+          code: 0,
+          reason: ConnectionLossReasons.HEARTBEAT_TIMEOUT,
+        });
         this._reset();
         this.connect();
       }, this._options.heartbeatTimeout);

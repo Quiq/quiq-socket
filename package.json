@@ -1,6 +1,6 @@
 {
   "name": "quiq-socket",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "description": "WebSocket API wrapper with automatic retry handling and heartbeat",
   "main": "dist/index.js",
   "types": "dist/types/index.d.js",
@@ -8,7 +8,7 @@
   "jsnext:main": "dist/index.es.js",
   "scripts": {
     "build": "rollup -c && yarn make-types",
-    "start": "rollup -c -w",
+    "start": "yarn make-types && rollup -c -w",
     "check-types": "./node_modules/.bin/tsc --noEmit --skipLibCheck",
     "make-types": "./node_modules/.bin/tsc --emitDeclarationOnly --skipLibCheck",
     "jest": "jest --watch --colors",
